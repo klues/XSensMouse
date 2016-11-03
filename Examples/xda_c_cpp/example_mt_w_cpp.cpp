@@ -207,6 +207,8 @@ private:
 	XsDevice* m_device;
 };
 
+void mouseLeftClick();
+
 //----------------------------------------------------------------------
 // Main
 //----------------------------------------------------------------------
@@ -384,15 +386,17 @@ int main(int argc, char* argv[])
 		std::cout << "Waiting for data available..." << std::endl;
 
 		std::vector<XsEuler> eulerData(mtwCallbacks.size()); // Room to store euler data for each mtw
-		XsVector velocity;
+		XsVector velocity, rotation;
 		unsigned int printCounter = 0;
 		//ofstream fileXyZ;
 		//fileXyZ.open("dataAcc-front-back.csv");
-		int cursorX = 200;
-		int cursorY = 200;
+		float cursorX = 200;
+		float cursorY = 200;
+		float cursorXStored, cursorYStored;
+		float max = 0;
 		float offsetX;
 		float offsetY;
-		int first = 1;
+		int first = 1, inclick=0;
 		while (!_kbhit()) {
 			XsTime::msleep(0);
 
@@ -405,6 +409,7 @@ int main(int argc, char* argv[])
 					XsDataPacket const * packet = mtwCallbacks[i]->getOldestPacket();
 					eulerData[i] = packet->orientationEuler();
 					velocity = packet->calibratedAcceleration();
+					rotation = packet->calibratedGyroscopeData();
 					mtwCallbacks[i]->deleteOldestPacket();
 				}
 			}
@@ -415,21 +420,45 @@ int main(int argc, char* argv[])
 				{
 					if (first) {
 						first--;
-						offsetX = velocity.at(1);
+						offsetX = rotation.at(2); //1
 						offsetY = velocity.at(0);
 						std::cout << "offset X: " << offsetX << "\n";
 						std::cout << "offset Y: " << offsetY << "\n";
+						std::cout << "size: " << velocity.size() << "\n";
 					}
-					float factor = -2;
-					float threshold = 0.5;
-					float normValueX = velocity.at(1) - offsetX;
+					float factor = 4;
+					float threshold = 0.3;
+					float thresholdClick = 5;
+					float normValueX = rotation.at(2) - offsetX; //1
 					float normValueY = velocity.at(0) - offsetY;
+					//std::cout << "normY: " << normValueY << "\n";
+					int changed = 0;
 
-					if (abs(normValueY) > threshold) {
-						cursorY += normValueY*factor;
+					if (abs(normValueX) < threshold && abs(normValueY) < threshold) {
+						inclick = 0;
 					}
-					if (abs(normValueX) > threshold) {
-						cursorX += normValueX*factor;
+					if (abs(normValueY) > threshold && !inclick) {
+						int sig = -1;
+						if (normValueY < 0) sig = 1;
+						//cursorY += normValueY*normValueY*sig*factor;
+						if (normValueY*normValueY*factor > 5) changed = 1;
+					}
+					if (abs(normValueX) > threshold && !inclick) {
+						int sig = -1;
+						if (normValueX < 0) sig = 1;
+						cursorX += normValueX*normValueX*sig*factor;
+						if(normValueX*normValueX*factor > 5) changed = 1;
+					}
+					if (abs(normValueY) > thresholdClick) {
+						cursorX = cursorXStored;
+						cursorY = cursorYStored;
+						SetCursorPos(cursorX, cursorY);
+						mouseLeftClick();
+						inclick = 1;
+					}
+					if (!changed) {
+						cursorXStored = cursorX;
+						cursorYStored = cursorY;
 					}
 					SetCursorPos(cursorX, cursorY);
 				}
@@ -477,4 +506,20 @@ int main(int argc, char* argv[])
 	std::cout << "Successful exit." << std::endl;
 	std::cout << "Press [ENTER] to continue." << std::endl; std::cin.get();
 	return 0;
+}
+
+void mouseLeftClick()
+{
+	INPUT Input = { 0 };
+
+	// left down
+	Input.type = INPUT_MOUSE;
+	Input.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+	::SendInput(1, &Input, sizeof(INPUT));
+
+	// left up
+	::ZeroMemory(&Input, sizeof(INPUT));
+	Input.type = INPUT_MOUSE;
+	Input.mi.dwFlags = MOUSEEVENTF_LEFTUP;
+	::SendInput(1, &Input, sizeof(INPUT));
 }
