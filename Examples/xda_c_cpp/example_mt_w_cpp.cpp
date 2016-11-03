@@ -385,11 +385,17 @@ int main(int argc, char* argv[])
 		std::cout << "Waiting for data available..." << std::endl;
 
 		std::vector<XsEuler> eulerData(mtwCallbacks.size()); // Room to store euler data for each mtw
+		XsVector velocity;
 		unsigned int printCounter = 0;
 		ofstream fileXyZ;
 		ofstream fileEuler;
-		fileXyZ.open("dataXyz-circle.csv");
-		fileEuler.open("dataEuler-circle.csv");
+		fileXyZ.open("dataAcc-front-back.csv");
+		//fileEuler.open("dataEuler-circle.csv");
+		int cursorX = 200;
+		int cursorY = 200;
+		float offsetX;
+		float offsetY;
+		int first = 10;
 		while (!_kbhit()) {
 			XsTime::msleep(0);
 
@@ -401,6 +407,7 @@ int main(int argc, char* argv[])
 					newDataAvailable = true;
 					XsDataPacket const * packet = mtwCallbacks[i]->getOldestPacket();
 					eulerData[i] = packet->orientationEuler();
+					velocity = packet->calibratedAcceleration();
 					mtwCallbacks[i]->deleteOldestPacket();
 				}
 			}
@@ -412,9 +419,29 @@ int main(int argc, char* argv[])
 				{
 					for (size_t i = 0; i < mtwCallbacks.size(); ++i)
 					{
-						fileEuler << eulerData[i].roll() << ";" << eulerData[i].pitch() << ";" << eulerData[i].yaw() << "\n";
-						fileXyZ << eulerData[i].x() << ";" << eulerData[i].y() << ";" << eulerData[i].z() << "\n";
+						if (first) {
+							first --;
+							offsetX = velocity.at(1);
+							offsetY = velocity.at(0);
+							std::cout << "offset X: " << offsetX << "\n";
+							std::cout << "offset Y: " << offsetY << "\n";
+						}
+						//fileEuler << eulerData[i].roll() << ";" << eulerData[i].pitch() << ";" << eulerData[i].yaw() << "\n";
+						//fileXyZ << velocity.at(0) << ";" << velocity.at(1) << ";" << velocity.at(2) << "\n";
+						float factor = -2;
+						float threshold = 0.5;
+						float normValueX = velocity.at(1) - offsetX;
+						float normValueY = velocity.at(0) - offsetY;
 						
+						if (abs(normValueY) > threshold) {
+							cursorY += normValueY*factor;
+						}
+						if (abs(normValueX) > threshold) {
+							cursorX += normValueX*factor;
+						}
+						SetCursorPos(cursorX, cursorY);
+						//std::cout << velocity.size() << "\n";
+
 						/*std::cout << "[" << i << "]: ID: " << mtwCallbacks[i]->device().deviceId().toString().toStdString()
 								  << ", Roll: " << std::setw(7) << std::fixed << std::setprecision(2) << eulerData[i].roll()
 								  << ", Pitch: " << std::setw(7) << std::fixed << std::setprecision(2) << eulerData[i].pitch()
@@ -426,13 +453,19 @@ int main(int argc, char* argv[])
 							<< ", Y: " << std::setw(7) << std::fixed << std::setprecision(2) << eulerData[i].y()
 							<< ", Z: " << std::setw(7) << std::fixed << std::setprecision(2) << eulerData[i].z()
 							<< "\n";*/
+
+						/*std::cout << "[" << i << "]: ID: " << mtwCallbacks[i]->device().deviceId().toString().toStdString()
+							<< ", X: " << std::setw(7) << std::fixed << std::setprecision(2) << velocity.at(0)
+							<< ", Y: " << std::setw(7) << std::fixed << std::setprecision(2) << velocity.at(1)
+							<< ", Z: " << std::setw(7) << std::fixed << std::setprecision(2) << velocity.at(2)
+							<< "\n";*/
 					}
 				}
 				++printCounter;
 			}
 
 		}
-		fileEuler.close();
+		//fileEuler.close();
 		fileXyZ.close();
 		(void)_getch();
 
