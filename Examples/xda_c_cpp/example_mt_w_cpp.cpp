@@ -50,7 +50,7 @@ std::ostream& operator << (std::ostream& out, XsPortInfo const & p)
 	out << "Port: " << std::setw(2) << std::right << p.portNumber() << " (" << p.portName().toStdString() << ") @ "
 		<< std::setw(7) << p.baudrate() << " Bd"
 		<< ", " << "ID: " << p.deviceId().toString().toStdString()
-	;
+		;
 	return out;
 }
 
@@ -153,7 +153,7 @@ class MtwCallback : public XsCallback
 public:
 	MtwCallback(int mtwIndex, XsDevice* device)
 		:m_mtwIndex(mtwIndex)
-		,m_device(device)
+		, m_device(device)
 	{}
 
 	bool dataAvailable() const
@@ -338,8 +338,7 @@ int main(int argc, char* argv[])
 			{
 				waitForConnections = (toupper((char)_getch()) != 'Y');
 			}
-		}
-		while (waitForConnections);
+		} while (waitForConnections);
 
 		std::cout << "Starting measurement..." << std::endl;
 		if (!wirelessMasterDevice->gotoMeasurement())
@@ -387,15 +386,13 @@ int main(int argc, char* argv[])
 		std::vector<XsEuler> eulerData(mtwCallbacks.size()); // Room to store euler data for each mtw
 		XsVector velocity;
 		unsigned int printCounter = 0;
-		ofstream fileXyZ;
-		ofstream fileEuler;
-		fileXyZ.open("dataAcc-front-back.csv");
-		//fileEuler.open("dataEuler-circle.csv");
+		//ofstream fileXyZ;
+		//fileXyZ.open("dataAcc-front-back.csv");
 		int cursorX = 200;
 		int cursorY = 200;
 		float offsetX;
 		float offsetY;
-		int first = 10;
+		int first = 1;
 		while (!_kbhit()) {
 			XsTime::msleep(0);
 
@@ -414,59 +411,31 @@ int main(int argc, char* argv[])
 
 			if (newDataAvailable)
 			{
-				// Don't print too often for performance. Console output is very slow.
-				if (printCounter % 1 == 0)
+				for (size_t i = 0; i < mtwCallbacks.size(); ++i)
 				{
-					for (size_t i = 0; i < mtwCallbacks.size(); ++i)
-					{
-						if (first) {
-							first --;
-							offsetX = velocity.at(1);
-							offsetY = velocity.at(0);
-							std::cout << "offset X: " << offsetX << "\n";
-							std::cout << "offset Y: " << offsetY << "\n";
-						}
-						//fileEuler << eulerData[i].roll() << ";" << eulerData[i].pitch() << ";" << eulerData[i].yaw() << "\n";
-						//fileXyZ << velocity.at(0) << ";" << velocity.at(1) << ";" << velocity.at(2) << "\n";
-						float factor = -2;
-						float threshold = 0.5;
-						float normValueX = velocity.at(1) - offsetX;
-						float normValueY = velocity.at(0) - offsetY;
-						
-						if (abs(normValueY) > threshold) {
-							cursorY += normValueY*factor;
-						}
-						if (abs(normValueX) > threshold) {
-							cursorX += normValueX*factor;
-						}
-						SetCursorPos(cursorX, cursorY);
-						//std::cout << velocity.size() << "\n";
-
-						/*std::cout << "[" << i << "]: ID: " << mtwCallbacks[i]->device().deviceId().toString().toStdString()
-								  << ", Roll: " << std::setw(7) << std::fixed << std::setprecision(2) << eulerData[i].roll()
-								  << ", Pitch: " << std::setw(7) << std::fixed << std::setprecision(2) << eulerData[i].pitch()
-								  << ", Yaw: " <<  std::setw(7) << std::fixed << std::setprecision(2) << eulerData[i].yaw()
-								  << "\n";*/
-
-						/*std::cout << "[" << i << "]: ID: " << mtwCallbacks[i]->device().deviceId().toString().toStdString()
-							<< ", X: " << std::setw(7) << std::fixed << std::setprecision(2) << eulerData[i].x()
-							<< ", Y: " << std::setw(7) << std::fixed << std::setprecision(2) << eulerData[i].y()
-							<< ", Z: " << std::setw(7) << std::fixed << std::setprecision(2) << eulerData[i].z()
-							<< "\n";*/
-
-						/*std::cout << "[" << i << "]: ID: " << mtwCallbacks[i]->device().deviceId().toString().toStdString()
-							<< ", X: " << std::setw(7) << std::fixed << std::setprecision(2) << velocity.at(0)
-							<< ", Y: " << std::setw(7) << std::fixed << std::setprecision(2) << velocity.at(1)
-							<< ", Z: " << std::setw(7) << std::fixed << std::setprecision(2) << velocity.at(2)
-							<< "\n";*/
+					if (first) {
+						first--;
+						offsetX = velocity.at(1);
+						offsetY = velocity.at(0);
+						std::cout << "offset X: " << offsetX << "\n";
+						std::cout << "offset Y: " << offsetY << "\n";
 					}
-				}
-				++printCounter;
-			}
+					float factor = -2;
+					float threshold = 0.5;
+					float normValueX = velocity.at(1) - offsetX;
+					float normValueY = velocity.at(0) - offsetY;
 
+					if (abs(normValueY) > threshold) {
+						cursorY += normValueY*factor;
+					}
+					if (abs(normValueX) > threshold) {
+						cursorX += normValueX*factor;
+					}
+					SetCursorPos(cursorX, cursorY);
+				}
+			}
 		}
-		//fileEuler.close();
-		fileXyZ.close();
+		//fileXyZ.close();
 		(void)_getch();
 
 		std::cout << "Setting config mode..." << std::endl;
