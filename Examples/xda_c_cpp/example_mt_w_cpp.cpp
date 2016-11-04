@@ -209,6 +209,12 @@ private:
 
 void mouseLeftClick();
 
+const int N_AVG = 10;
+float movingAvg(float oldAvg, float newValue) {
+	oldAvg -= oldAvg / N_AVG;
+	return oldAvg + newValue / N_AVG * 1.0;
+}
+
 //----------------------------------------------------------------------
 // Main
 //----------------------------------------------------------------------
@@ -392,10 +398,10 @@ int main(int argc, char* argv[])
 		//fileXyZ.open("dataAcc-front-back.csv");
 		float cursorX = 200;
 		float cursorY = 200;
-		float cursorXStored, cursorYStored;
+		float cursorXStored, cursorYStored, rotationStored;
 		float max = 0;
-		float offsetX;
-		float offsetY;
+		float offsetX, offsetY;
+		float normValueX=0, normValueY=0;
 		int first = 1, inclick=0;
 		while (!_kbhit()) {
 			XsTime::msleep(0);
@@ -409,7 +415,7 @@ int main(int argc, char* argv[])
 					XsDataPacket const * packet = mtwCallbacks[i]->getOldestPacket();
 					eulerData[i] = packet->orientationEuler();
 					velocity = packet->calibratedAcceleration();
-					rotation = packet->calibratedGyroscopeData();
+					rotation = packet->calibratedMagneticField();
 					mtwCallbacks[i]->deleteOldestPacket();
 				}
 			}
@@ -420,40 +426,43 @@ int main(int argc, char* argv[])
 				{
 					if (first) {
 						first--;
-						offsetX = rotation.at(2); //1
+						offsetX = velocity.at(1); //1
 						offsetY = velocity.at(0);
+						rotationStored = rotation.at(2);
 						std::cout << "offset X: " << offsetX << "\n";
 						std::cout << "offset Y: " << offsetY << "\n";
 						std::cout << "size: " << velocity.size() << "\n";
 					}
-					float factor = 4;
-					float threshold = 0.3;
-					float thresholdClick = 5;
-					float normValueX = rotation.at(2) - offsetX; //1
-					float normValueY = velocity.at(0) - offsetY;
-					//std::cout << "normY: " << normValueY << "\n";
+					float factor = 6;
+					float thresholdMin = 0.0, thresholdMax=3;
+					float thresholdClick = 0.7;
+					normValueX = movingAvg(normValueX, velocity.at(1) - offsetX); //1
+					normValueY = movingAvg(normValueY, velocity.at(0) - offsetY);
+					float newRoation = rotation.at(2);
+					std::cout << "normY: " << normValueY << "\n";
 					int changed = 0;
 
-					if (abs(normValueX) < threshold && abs(normValueY) < threshold) {
+					if (abs(normValueX) < thresholdMin && abs(normValueY) < thresholdMin) {
 						inclick = 0;
 					}
-					if (abs(normValueY) > threshold && !inclick) {
+					if (abs(normValueY) > thresholdMin && abs(normValueY) < thresholdMax && !inclick) {
 						int sig = -1;
 						if (normValueY < 0) sig = 1;
-						//cursorY += normValueY*normValueY*sig*factor;
+						cursorY += normValueY*normValueY*sig*factor;
 						if (normValueY*normValueY*factor > 5) changed = 1;
 					}
-					if (abs(normValueX) > threshold && !inclick) {
+					if (abs(normValueX) > thresholdMin && abs(normValueX) < thresholdMax && !inclick) {
 						int sig = -1;
 						if (normValueX < 0) sig = 1;
 						cursorX += normValueX*normValueX*sig*factor;
 						if(normValueX*normValueX*factor > 5) changed = 1;
 					}
-					if (abs(normValueY) > thresholdClick) {
+					if (0 && abs(newRoation-rotationStored) > thresholdClick) {
 						cursorX = cursorXStored;
 						cursorY = cursorYStored;
 						SetCursorPos(cursorX, cursorY);
 						mouseLeftClick();
+						rotationStored = rotation.at(2);
 						inclick = 1;
 					}
 					if (!changed) {
