@@ -453,8 +453,12 @@ int main(int argc, char* argv[])
 							}
 						}
 
-						rawNewX = limitAbs(rawNewX, thresholdIgnore);
-						rawNewY = limitAbs(rawNewY, thresholdIgnore);
+						if (abs(rawNewX - normValueX) > thresholdIgnore) {
+							rawNewX = limitAbs(rawNewX, thresholdIgnore);
+						}
+						if (abs(rawNewY - normValueY) > thresholdIgnore) {
+							rawNewY = limitAbs(rawNewY, thresholdIgnore);
+						}
 						normValueX = movingAvg(normValueX, rawNewX);
 						normValueY = movingAvg(normValueY, rawNewY);
 
