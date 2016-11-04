@@ -44,6 +44,9 @@ using namespace std;
 
 #include <xsens/xsmutex.h>
 
+const float MOUSE_SPEED = 8;
+const int N_AVG = 7;
+
 /*! \brief Stream insertion operator overload for XsPortInfo */
 std::ostream& operator << (std::ostream& out, XsPortInfo const & p)
 {
@@ -209,11 +212,13 @@ private:
 
 void mouseLeftClick();
 
-const int N_AVG = 7;
-float movingAvg(float oldAvg, float newValue) {
-	oldAvg -= oldAvg / N_AVG;
-	return oldAvg + newValue / N_AVG * 1.0;
-}
+float movingAvg(float oldAvg, float newValue);
+
+int sign(float f);
+
+//limits a value to an maximum absolute value
+//eg. limitAbs(-2.5, 1.5) == -1.5
+float limitAbs(float f, float maxAbs);
 
 //----------------------------------------------------------------------
 // Main
@@ -393,16 +398,13 @@ int main(int argc, char* argv[])
 
 		std::vector<XsEuler> eulerData(mtwCallbacks.size()); // Room to store euler data for each mtw
 		XsVector velocity, rotation;
-		unsigned int printCounter = 0;
 		//ofstream fileXyZ;
 		//fileXyZ.open("dataAcc-front-back.csv");
-		float cursorX = 200;
+		float cursorX = 200; //TODO: right start point of cursor - current cursor position
 		float cursorY = 200;
-		float cursorXStored, cursorYStored;
-		float max = 0;
 		float offsetX, offsetY;
-		float normValueX=0, normValueY=0;
-		int first = 1, inclick=0;
+		float normValueX = 0, normValueY = 0;
+		bool first = true, inclick = false;
 		while (!_kbhit()) {
 			XsTime::msleep(0);
 
@@ -425,59 +427,42 @@ int main(int argc, char* argv[])
 				for (size_t i = 0; i < mtwCallbacks.size(); ++i)
 				{
 					if (first) {
-						first = 0;
+						first = false;
 						offsetX = velocity.at(1); //1
 						offsetY = velocity.at(0);
 						std::cout << "offset X: " << offsetX << "\n";
 						std::cout << "offset Y: " << offsetY << "\n";
 						std::cout << "size: " << velocity.size() << "\n";
 					}
-					float factor = 8;
-					float thresholdMin = 0.0, thresholdMax=3;
-					float thresholdClick = 2.5, thresholdClickEnd=0.15, thresholdIgnore = 1.5;
+
+					float thresholdClick = 2.5, thresholdClickEnd = 0.15, thresholdIgnore = 1.5;
 					float rawNewX = velocity.at(1) - offsetX;
 					float rawNewY = velocity.at(0) - offsetY;
-					
-					int changed = 0;
 
-					if (abs(rawNewY - normValueY) > thresholdClick && !inclick) {
-						//cursorX = cursorXStored;
-						//cursorY = cursorYStored;
-						//SetCursorPos(cursorX, cursorY);
-						if (rawNewY - normValueY < 0) {
-							std::cout << "left click!" << "\n";
-							mouseLeftClick();
-							inclick = 1;
-						}
+					if (abs(rawNewY) < thresholdClickEnd) {
+						inclick = false;
 					}
-					if (!inclick) {
-						if (abs(rawNewX - normValueX) > thresholdIgnore) rawNewX = thresholdIgnore*rawNewX/abs(rawNewX);
-						if (abs(rawNewY - normValueY) > thresholdIgnore) rawNewY = thresholdIgnore*rawNewY / abs(rawNewY);
+
+					if (!inclick)
+					{
+						if (abs(rawNewY - normValueY) > thresholdClick) {
+							if (rawNewY - normValueY < 0) { //at foot up
+								std::cout << "left click!" << "\n";
+								mouseLeftClick();
+								inclick = true;
+							}
+						}
+
+						rawNewX = limitAbs(rawNewX, thresholdIgnore);
+						rawNewY = limitAbs(rawNewY, thresholdIgnore);
 						normValueX = movingAvg(normValueX, rawNewX);
 						normValueY = movingAvg(normValueY, rawNewY);
+
+						//TODO: do not change cursor, if it is outside of the screen
+						cursorY -= sign(normValueY)*normValueY*normValueY*MOUSE_SPEED;
+						cursorX -= sign(normValueX)*normValueX*normValueX*MOUSE_SPEED;
+						SetCursorPos(cursorX, cursorY);
 					}
-					if (abs(rawNewY) < thresholdClickEnd) {
-						inclick = 0;
-					}
-					
-					if (abs(normValueY) > thresholdMin && abs(normValueY) < thresholdMax && !inclick) {
-						int sig = -1;
-						if (normValueY < 0) sig = 1;
-						cursorY += normValueY*normValueY*sig*factor;
-						if (normValueY*normValueY*factor > 5) changed = 1;
-					}
-					if (abs(normValueX) > thresholdMin && abs(normValueX) < thresholdMax && !inclick) {
-						int sig = -1;
-						if (normValueX < 0) sig = 1;
-						cursorX += normValueX*normValueX*sig*factor;
-						if(normValueX*normValueX*factor > 5) changed = 1;
-					}
-					
-					if (!changed) {
-						cursorXStored = cursorX;
-						cursorYStored = cursorY;
-					}
-					SetCursorPos(cursorX, cursorY);
 				}
 			}
 		}
@@ -539,4 +524,19 @@ void mouseLeftClick()
 	Input.type = INPUT_MOUSE;
 	Input.mi.dwFlags = MOUSEEVENTF_LEFTUP;
 	::SendInput(1, &Input, sizeof(INPUT));
+}
+
+float movingAvg(float oldAvg, float newValue) {
+	oldAvg -= oldAvg / N_AVG;
+	return oldAvg + newValue / N_AVG * 1.0;
+}
+
+int sign(float f) {
+	if (f >= 0) return 1;
+	return -1;
+}
+
+float limitAbs(float f, float maxAbs) {
+	if (abs(f) <= maxAbs) return f;
+	return maxAbs * sign(f);
 }
