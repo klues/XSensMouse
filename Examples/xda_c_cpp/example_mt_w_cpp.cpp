@@ -209,7 +209,7 @@ private:
 
 void mouseLeftClick();
 
-const int N_AVG = 10;
+const int N_AVG = 7;
 float movingAvg(float oldAvg, float newValue) {
 	oldAvg -= oldAvg / N_AVG;
 	return oldAvg + newValue / N_AVG * 1.0;
@@ -398,7 +398,7 @@ int main(int argc, char* argv[])
 		//fileXyZ.open("dataAcc-front-back.csv");
 		float cursorX = 200;
 		float cursorY = 200;
-		float cursorXStored, cursorYStored, rotationStored;
+		float cursorXStored, cursorYStored;
 		float max = 0;
 		float offsetX, offsetY;
 		float normValueX=0, normValueY=0;
@@ -425,37 +425,41 @@ int main(int argc, char* argv[])
 				for (size_t i = 0; i < mtwCallbacks.size(); ++i)
 				{
 					if (first) {
-						first--;
+						first = 0;
 						offsetX = velocity.at(1); //1
 						offsetY = velocity.at(0);
-						rotationStored = rotation.at(2);
 						std::cout << "offset X: " << offsetX << "\n";
 						std::cout << "offset Y: " << offsetY << "\n";
 						std::cout << "size: " << velocity.size() << "\n";
 					}
 					float factor = 8;
 					float thresholdMin = 0.0, thresholdMax=3;
-					float thresholdClick = 2;
+					float thresholdClick = 2.5, thresholdClickEnd=0.15, thresholdIgnore = 1.5;
 					float rawNewX = velocity.at(1) - offsetX;
 					float rawNewY = velocity.at(0) - offsetY;
-					normValueX = movingAvg(normValueX, rawNewX); //1
-					normValueY = movingAvg(normValueY, rawNewY);
-					float newRoation = rotation.at(2);
-					std::cout << "normY: " << normValueY << "\n";
+					
 					int changed = 0;
 
-					if (abs(normValueX) < 0.3 && abs(normValueY) < 0.3) {
-						inclick = 0;
-					}
-					if (abs(rawNewY - normValueY) > thresholdClick) {
+					if (abs(rawNewY - normValueY) > thresholdClick && !inclick) {
 						//cursorX = cursorXStored;
 						//cursorY = cursorYStored;
 						//SetCursorPos(cursorX, cursorY);
-						std::cout << "left click!" << "\n";
-						mouseLeftClick();
-						rotationStored = rotation.at(2);
-						inclick = 1;
+						if (rawNewY - normValueY < 0) {
+							std::cout << "left click!" << "\n";
+							mouseLeftClick();
+							inclick = 1;
+						}
 					}
+					if (!inclick) {
+						if (abs(rawNewX - normValueX) > thresholdIgnore) rawNewX = thresholdIgnore*rawNewX/abs(rawNewX);
+						if (abs(rawNewY - normValueY) > thresholdIgnore) rawNewY = thresholdIgnore*rawNewY / abs(rawNewY);
+						normValueX = movingAvg(normValueX, rawNewX);
+						normValueY = movingAvg(normValueY, rawNewY);
+					}
+					if (abs(rawNewY) < thresholdClickEnd) {
+						inclick = 0;
+					}
+					
 					if (abs(normValueY) > thresholdMin && abs(normValueY) < thresholdMax && !inclick) {
 						int sig = -1;
 						if (normValueY < 0) sig = 1;
