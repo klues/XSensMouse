@@ -433,17 +433,28 @@ int main(int argc, char* argv[])
 						std::cout << "offset Y: " << offsetY << "\n";
 						std::cout << "size: " << velocity.size() << "\n";
 					}
-					float factor = 6;
+					float factor = 8;
 					float thresholdMin = 0.0, thresholdMax=3;
-					float thresholdClick = 0.7;
-					normValueX = movingAvg(normValueX, velocity.at(1) - offsetX); //1
-					normValueY = movingAvg(normValueY, velocity.at(0) - offsetY);
+					float thresholdClick = 2;
+					float rawNewX = velocity.at(1) - offsetX;
+					float rawNewY = velocity.at(0) - offsetY;
+					normValueX = movingAvg(normValueX, rawNewX); //1
+					normValueY = movingAvg(normValueY, rawNewY);
 					float newRoation = rotation.at(2);
 					std::cout << "normY: " << normValueY << "\n";
 					int changed = 0;
 
-					if (abs(normValueX) < thresholdMin && abs(normValueY) < thresholdMin) {
+					if (abs(normValueX) < 0.3 && abs(normValueY) < 0.3) {
 						inclick = 0;
+					}
+					if (abs(rawNewY - normValueY) > thresholdClick) {
+						//cursorX = cursorXStored;
+						//cursorY = cursorYStored;
+						//SetCursorPos(cursorX, cursorY);
+						std::cout << "left click!" << "\n";
+						mouseLeftClick();
+						rotationStored = rotation.at(2);
+						inclick = 1;
 					}
 					if (abs(normValueY) > thresholdMin && abs(normValueY) < thresholdMax && !inclick) {
 						int sig = -1;
@@ -457,14 +468,7 @@ int main(int argc, char* argv[])
 						cursorX += normValueX*normValueX*sig*factor;
 						if(normValueX*normValueX*factor > 5) changed = 1;
 					}
-					if (0 && abs(newRoation-rotationStored) > thresholdClick) {
-						cursorX = cursorXStored;
-						cursorY = cursorYStored;
-						SetCursorPos(cursorX, cursorY);
-						mouseLeftClick();
-						rotationStored = rotation.at(2);
-						inclick = 1;
-					}
+					
 					if (!changed) {
 						cursorXStored = cursorX;
 						cursorYStored = cursorY;
