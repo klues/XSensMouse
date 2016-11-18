@@ -220,6 +220,8 @@ int sign(float f);
 //eg. limitAbs(-2.5, 1.5) == -1.5
 float limitAbs(float f, float maxAbs);
 
+float limitValue(float value, float minValue, float maxValue);
+
 //----------------------------------------------------------------------
 // Main
 //----------------------------------------------------------------------
@@ -400,11 +402,16 @@ int main(int argc, char* argv[])
 		XsVector velocity, rotation;
 		//ofstream fileXyZ;
 		//fileXyZ.open("dataAcc-front-back.csv");
-		float cursorX = 200; //TODO: right start point of cursor - current cursor position
-		float cursorY = 200;
+		POINT cursorPos;
+		GetCursorPos(&cursorPos);
+		float cursorX = cursorPos.x;
+		float cursorY = cursorPos.y;
 		float offsetX, offsetY;
 		float normValueX = 0, normValueY = 0;
 		bool first = true, inclick = false;
+		DWORD displayWidth = GetSystemMetrics(SM_CXSCREEN);
+		DWORD displayHeight = GetSystemMetrics(SM_CYSCREEN);
+		
 		while (!_kbhit()) {
 			XsTime::msleep(0);
 
@@ -462,9 +469,11 @@ int main(int argc, char* argv[])
 						normValueX = movingAvg(normValueX, rawNewX);
 						normValueY = movingAvg(normValueY, rawNewY);
 
-						//TODO: do not change cursor, if it is outside of the screen
-						cursorY -= sign(normValueY)*normValueY*normValueY*MOUSE_SPEED;
-						cursorX -= sign(normValueX)*normValueX*normValueX*MOUSE_SPEED;
+						GetCursorPos(&cursorPos);
+						cursorY = cursorPos.y - sign(normValueY)*normValueY*normValueY*MOUSE_SPEED;
+						cursorX = cursorPos.x - sign(normValueX)*normValueX*normValueX*MOUSE_SPEED;
+						cursorY = limitValue(cursorY, 0, displayHeight);
+						cursorX = limitValue(cursorX, 0, displayWidth);
 						SetCursorPos(cursorX, cursorY);
 					}
 				}
@@ -543,4 +552,14 @@ int sign(float f) {
 float limitAbs(float f, float maxAbs) {
 	if (abs(f) <= maxAbs) return f;
 	return maxAbs * sign(f);
+}
+
+float limitValue(float value, float minValue, float maxValue) {
+	if (value < minValue) {
+		return minValue;
+	}
+	else if (value > maxValue) {
+		return maxValue;
+	}
+	return value;
 }
