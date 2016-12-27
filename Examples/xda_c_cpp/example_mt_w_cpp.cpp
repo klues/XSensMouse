@@ -44,8 +44,10 @@ using namespace std;
 
 #include <xsens/xsmutex.h>
 
-const float MOUSE_SPEED = 8;
-const int N_AVG = 7;
+float MOUSE_SPEED = 5;
+int N_AVG = 7;
+float thresholdClick = 2.5, thresholdClickEnd = 0.15, thresholdIgnore = 1.5;
+float offsetX, offsetY;
 
 /*! \brief Stream insertion operator overload for XsPortInfo */
 std::ostream& operator << (std::ostream& out, XsPortInfo const & p)
@@ -222,6 +224,9 @@ float limitAbs(float f, float maxAbs);
 
 float limitValue(float value, float minValue, float maxValue);
 
+//starts measurement and mouse movement
+void startMouse(std::vector<MtwCallback*> mtwCallbacks, bool calibrate);
+
 //----------------------------------------------------------------------
 // Main
 //----------------------------------------------------------------------
@@ -235,7 +240,7 @@ int main(int argc, char* argv[])
 	WirelessMasterCallback wirelessMasterCallback; // Callback for wireless master
 	std::vector<MtwCallback*> mtwCallbacks; // Callbacks for mtw devices
 
-	std::cout << "Constructing XsControl..." << std::endl;
+	//std::cout << "Constructing XsControl..." << std::endl;
 	XsControl* control = XsControl::construct();
 	if (control == 0)
 	{
@@ -244,10 +249,13 @@ int main(int argc, char* argv[])
 
 	try
 	{
-		std::cout << "Scanning ports..." << std::endl;
+		//std::cout << "Scanning ports..." << std::endl;
 		XsPortInfoArray detectedDevices = XsScanner::scanPorts();
-
-		std::cout << "Finding wireless master..." << std::endl;
+		std::cout << "------------------" << std::endl;
+		std::cout << "--- XSens Mouse---" << std::endl;
+		std::cout << "------------------" << std::endl;
+		std::cout << "Starting Hardware..." << std::endl;
+		std::cout << "Finding USB-Dongle..." << std::endl;
 		XsPortInfoArray::const_iterator wirelessMasterPort = detectedDevices.begin();
 		while (wirelessMasterPort != detectedDevices.end() && !wirelessMasterPort->deviceId().isWirelessMaster())
 		{
@@ -257,9 +265,9 @@ int main(int argc, char* argv[])
 		{
 			throw std::runtime_error("No wireless masters found");
 		}
-		std::cout << "Wireless master found @ " << *wirelessMasterPort << std::endl;
+		std::cout << "USB-Dongle found @ " << *wirelessMasterPort << std::endl;
 
-		std::cout << "Opening port..." << std::endl;
+		//std::cout << "Opening port..." << std::endl;
 		if (!control->openPort(wirelessMasterPort->portName().toStdString(), wirelessMasterPort->baudrate()))
 		{
 			std::ostringstream error;
@@ -267,7 +275,7 @@ int main(int argc, char* argv[])
 			throw std::runtime_error(error.str());
 		}
 
-		std::cout << "Getting XsDevice instance for wireless master..." << std::endl;
+		//std::cout << "Getting XsDevice instance for wireless master..." << std::endl;
 		XsDevicePtr wirelessMasterDevice = control->device(wirelessMasterPort->deviceId());
 		if (wirelessMasterDevice == 0)
 		{
@@ -276,9 +284,9 @@ int main(int argc, char* argv[])
 			throw std::runtime_error(error.str());
 		}
 
-		std::cout << "XsDevice instance created @ " << *wirelessMasterDevice << std::endl;
+		//std::cout << "XsDevice instance created @ " << *wirelessMasterDevice << std::endl;
 
-		std::cout << "Setting config mode..." << std::endl;
+		//std::cout << "Setting config mode..." << std::endl;
 		if (!wirelessMasterDevice->gotoConfig())
 		{
 			std::ostringstream error;
@@ -286,13 +294,13 @@ int main(int argc, char* argv[])
 			throw std::runtime_error(error.str());
 		}
 
-		std::cout << "Attaching callback handler..." << std::endl;
+		//std::cout << "Attaching callback handler..." << std::endl;
 		wirelessMasterDevice->addCallbackHandler(&wirelessMasterCallback);
 
-		std::cout << "Getting the list of the supported update rates..." << std::endl;
+		//std::cout << "Getting the list of the supported update rates..." << std::endl;
 		const XsIntArray supportedUpdateRates = wirelessMasterDevice->supportedUpdateRates();
 
-		std::cout << "Supported update rates: ";
+		//std::cout << "Supported update rates: ";
 		for (XsIntArray::const_iterator itUpRate = supportedUpdateRates.begin(); itUpRate != supportedUpdateRates.end(); ++itUpRate)
 		{
 			std::cout << *itUpRate << " ";
@@ -301,7 +309,7 @@ int main(int argc, char* argv[])
 
 		const int newUpdateRate = findClosestUpdateRate(supportedUpdateRates, desiredUpdateRate);
 
-		std::cout << "Setting update rate to " << newUpdateRate << " Hz..." << std::endl;
+		//std::cout << "Setting update rate to " << newUpdateRate << " Hz..." << std::endl;
 		if (!wirelessMasterDevice->setUpdateRate(newUpdateRate))
 		{
 			std::ostringstream error;
@@ -309,7 +317,7 @@ int main(int argc, char* argv[])
 			throw std::runtime_error(error.str());
 		}
 
-		std::cout << "Disabling radio channel if previously enabled..." << std::endl;
+		//std::cout << "Disabling radio channel if previously enabled..." << std::endl;
 		if (wirelessMasterDevice->isRadioEnabled())
 		{
 			if (!wirelessMasterDevice->disableRadio())
@@ -320,7 +328,7 @@ int main(int argc, char* argv[])
 			}
 		}
 
-		std::cout << "Setting radio channel to " << desiredRadioChannel << " and enabling radio..." << std::endl;
+		//std::cout << "Setting radio channel to " << desiredRadioChannel << " and enabling radio..." << std::endl;
 		if (!wirelessMasterDevice->enableRadio(desiredRadioChannel))
 		{
 			std::ostringstream error;
@@ -328,7 +336,7 @@ int main(int argc, char* argv[])
 			throw std::runtime_error(error.str());
 		}
 
-		std::cout << "Waiting for MTW to wirelessly connect...\n" << std::endl;
+		std::cout << "Waiting for XSens to wirelessly connect..." << std::endl;
 
 		bool waitForConnections = true;
 		size_t connectedMTWCount = wirelessMasterCallback.getWirelessMTWs().size();
@@ -341,7 +349,15 @@ int main(int argc, char* argv[])
 				size_t nextCount = wirelessMasterCallback.getWirelessMTWs().size();
 				if (nextCount != connectedMTWCount)
 				{
-					std::cout << "Number of connected MTWs: " << nextCount << ". Press 'Y' to start measurement." << std::endl;
+					std::cout << "XSens connected! Mouse is ready to start." << std::endl << std::endl;
+					
+					std::cout << "Configuration of mouse is possible during usage. Press:" << std::endl;
+					std::cout << "<s> for changing mouse speed." << std::endl;
+					std::cout << "<m> for changing mouse smoothing." << std::endl;
+					std::cout << "<t> for changing click threshold." << std::endl;
+					std::cout << "<ESC> to exit the program" << std::endl << std::endl;
+					std::cout << "while the mouse is running." << std::endl;
+					std::cout << "Press any key to start mouse." << std::endl;
 					connectedMTWCount = nextCount;
 				}
 				else
@@ -351,11 +367,12 @@ int main(int argc, char* argv[])
 			}
 			if (_kbhit())
 			{
-				waitForConnections = (toupper((char)_getch()) != 'Y');
+				(void)_getch();
+				waitForConnections = false;
 			}
 		} while (waitForConnections);
 
-		std::cout << "Starting measurement..." << std::endl;
+		std::cout << "Starting mouse..." << std::endl;
 		if (!wirelessMasterDevice->gotoMeasurement())
 		{
 			std::ostringstream error;
@@ -363,7 +380,6 @@ int main(int argc, char* argv[])
 			throw std::runtime_error(error.str());
 		}
 
-		std::cout << "Getting XsDevice instances for all MTWs..." << std::endl;
 		XsDeviceIdArray allDeviceIds = control->deviceIds();
 		XsDeviceIdArray mtwDeviceIds;
 		for (XsDeviceIdArray::const_iterator i = allDeviceIds.begin(); i != allDeviceIds.end(); ++i)
@@ -387,7 +403,6 @@ int main(int argc, char* argv[])
 			}
 		}
 
-		std::cout << "Attaching callback handlers to MTWs..." << std::endl;
 		mtwCallbacks.resize(mtwDevices.size());
 		for (int i = 0; i < (int)mtwDevices.size(); ++i)
 		{
@@ -395,94 +410,61 @@ int main(int argc, char* argv[])
 			mtwDevices[i]->addCallbackHandler(mtwCallbacks[i]);
 		}
 
-		std::cout << "\nMain loop. Press any key to quit\n" << std::endl;
-		std::cout << "Waiting for data available..." << std::endl;
-
-		std::vector<XsEuler> eulerData(mtwCallbacks.size()); // Room to store euler data for each mtw
-		XsVector velocity, rotation;
-		//ofstream fileXyZ;
-		//fileXyZ.open("dataAcc-front-back.csv");
-		POINT cursorPos;
-		GetCursorPos(&cursorPos);
-		float cursorX = cursorPos.x;
-		float cursorY = cursorPos.y;
-		float offsetX, offsetY;
-		float normValueX = 0, normValueY = 0;
-		bool first = true, inclick = false;
-		DWORD displayWidth = GetSystemMetrics(SM_CXSCREEN);
-		DWORD displayHeight = GetSystemMetrics(SM_CYSCREEN);
-		
-		while (!_kbhit()) {
-			XsTime::msleep(0);
-
-			bool newDataAvailable = false;
-			for (size_t i = 0; i < mtwCallbacks.size(); ++i)
-			{
-				if (mtwCallbacks[i]->dataAvailable())
-				{
-					newDataAvailable = true;
-					XsDataPacket const * packet = mtwCallbacks[i]->getOldestPacket();
-					eulerData[i] = packet->orientationEuler();
-					velocity = packet->calibratedAcceleration();
-					rotation = packet->calibratedMagneticField();
-					mtwCallbacks[i]->deleteOldestPacket();
-				}
-			}
-
-			if (newDataAvailable)
-			{
-				for (size_t i = 0; i < mtwCallbacks.size(); ++i)
-				{
-					if (first) {
-						first = false;
-						offsetX = velocity.at(1); //1
-						offsetY = velocity.at(0);
-						std::cout << "offset X: " << offsetX << "\n";
-						std::cout << "offset Y: " << offsetY << "\n";
-						std::cout << "size: " << velocity.size() << "\n";
+		char character = 'c';
+		char lastC = 0;
+		while ((int) character != 27) { //ESC == 27
+			
+			if (character == '+' || character == '-') {
+				if (lastC == 'm') { //change number for moving AVG
+					int sign = 1;
+					if (character == '-') sign = -1;
+					int newVal = N_AVG + sign;
+					if (newVal < 21 && newVal > 0) {
+						std::cout << "set smoothing from " << N_AVG << " to " << newVal << std::endl;
+						N_AVG = newVal;
 					}
-
-					float thresholdClick = 2.5, thresholdClickEnd = 0.15, thresholdIgnore = 1.5;
-					float rawNewX = velocity.at(1) - offsetX;
-					float rawNewY = velocity.at(0) - offsetY;
-
-					if (abs(rawNewY) < thresholdClickEnd) {
-						inclick = false;
+				} else if (lastC == 's') { //change mouse speed
+					int sign = 1;
+					if (character == '-') sign = -1;
+					int newVal = MOUSE_SPEED + sign;
+					if (newVal < 21 && newVal > 0) {
+						std::cout << "set speed from " << MOUSE_SPEED << " to " << newVal << std::endl;
+						MOUSE_SPEED = newVal;
 					}
-
-					if (!inclick)
-					{
-						if (abs(rawNewY - normValueY) > thresholdClick) {
-							if (rawNewY - normValueY < 0) { //at foot up
-								std::cout << "left click!" << "\n";
-								mouseLeftClick();
-								inclick = true;
-							}
-						}
-
-						if (abs(rawNewX - normValueX) > thresholdIgnore) {
-							rawNewX = limitAbs(rawNewX, thresholdIgnore);
-						}
-						if (abs(rawNewY - normValueY) > thresholdIgnore) {
-							rawNewY = limitAbs(rawNewY, thresholdIgnore);
-						}
-						normValueX = movingAvg(normValueX, rawNewX);
-						normValueY = movingAvg(normValueY, rawNewY);
-
-						GetCursorPos(&cursorPos);
-						cursorY = cursorPos.y - sign(normValueY)*normValueY*normValueY*MOUSE_SPEED;
-						cursorX = cursorPos.x - sign(normValueX)*normValueX*normValueX*MOUSE_SPEED;
-						cursorY = limitValue(cursorY, 0, displayHeight);
-						cursorX = limitValue(cursorX, 0, displayWidth);
-						SetCursorPos(cursorX, cursorY);
+				} else if (lastC == 't') { //change mouse speed
+					float factor = 1.1;
+					if (character == '-') factor = 0.9;
+					float newVal = thresholdClick * factor;
+					if (newVal < 5.0 && newVal > 1.0) {
+						std::cout << "set threshold from " << thresholdClick << " to " << newVal << std::endl;
+						thresholdClick = newVal;
 					}
 				}
 			}
+
+			if (character == 'm') {
+				std::cout << "changing mouse s<m>oothing, press <+> to increase and <-> to decrease (max: 20, min: 1)..." << std::endl;
+			} else if (character == 's') {
+				std::cout << "changing mouse <s>peed, press <+> to increase and <-> to decrease (max: 20, min: 1)..." << std::endl;
+			} else if (character == 't') {
+				std::cout << "changing mouse click <t>reshold, press <+> to increase and <-> to decrease (max: 5.0, min: 1.0)..." << std::endl;
+			}
+
+			if (character == 'c') { //calibrate
+				std::cout << "calibrating mouse... " << std::endl;
+				startMouse(mtwCallbacks, true);
+			}
+			else {
+				startMouse(mtwCallbacks, false);
+			}
+			
+			if (character != '+' && character != '-') {
+				lastC = character;
+			}
+			character = _getch();
 		}
-		//fileXyZ.close();
-		(void)_getch();
 
-		std::cout << "Setting config mode..." << std::endl;
+		//std::cout << "Setting config mode..." << std::endl;
 		if (!wirelessMasterDevice->gotoConfig())
 		{
 			std::ostringstream error;
@@ -490,7 +472,7 @@ int main(int argc, char* argv[])
 			throw std::runtime_error(error.str());
 		}
 
-		std::cout << "Disabling radio... " << std::endl;
+		//std::cout << "Disabling radio... " << std::endl;
 		if (!wirelessMasterDevice->disableRadio())
 		{
 			std::ostringstream error;
@@ -509,17 +491,16 @@ int main(int argc, char* argv[])
 		std::cout << "****ABORT****" << std::endl;
 	}
 
-	std::cout << "Closing XsControl..." << std::endl;
+	//std::cout << "Closing XsControl..." << std::endl;
 	control->close();
 
-	std::cout << "Deleting mtw callbacks..." << std::endl;
+	//std::cout << "Deleting mtw callbacks..." << std::endl;
 	for (std::vector<MtwCallback*>::iterator i = mtwCallbacks.begin(); i != mtwCallbacks.end(); ++i)
 	{
 		delete (*i);
 	}
 
 	std::cout << "Successful exit." << std::endl;
-	std::cout << "Press [ENTER] to continue." << std::endl; std::cin.get();
 	return 0;
 }
 
@@ -562,4 +543,98 @@ float limitValue(float value, float minValue, float maxValue) {
 		return maxValue;
 	}
 	return value;
+}
+
+void startMouse(std::vector<MtwCallback*> mtwCallbacks, bool calibrate) {
+	std::vector<XsEuler> eulerData(mtwCallbacks.size()); // Room to store euler data for each mtw
+	XsVector velocity, rotation;
+	//ofstream fileXyZ;
+	//fileXyZ.open("dataAcc-front-back.csv");
+	POINT cursorPos;
+	GetCursorPos(&cursorPos);
+	float cursorX = cursorPos.x;
+	float cursorY = cursorPos.y;
+	float normValueX = 0, normValueY = 0;
+	bool inclick = false;
+	int calibrateRuns = 0;
+	if (calibrate) {
+		calibrateRuns = N_AVG;
+	}
+	DWORD displayWidth = GetSystemMetrics(SM_CXSCREEN);
+	DWORD displayHeight = GetSystemMetrics(SM_CYSCREEN);
+
+	while (!_kbhit()) {
+		XsTime::msleep(0);
+
+		bool newDataAvailable = false;
+		for (size_t i = 0; i < mtwCallbacks.size(); ++i)
+		{
+			if (mtwCallbacks[i]->dataAvailable())
+			{
+				newDataAvailable = true;
+				XsDataPacket const * packet = mtwCallbacks[i]->getOldestPacket();
+				eulerData[i] = packet->orientationEuler();
+				velocity = packet->calibratedAcceleration();
+				rotation = packet->calibratedMagneticField();
+				mtwCallbacks[i]->deleteOldestPacket();
+			}
+		}
+
+		if (newDataAvailable)
+		{
+			for (size_t i = 0; i < mtwCallbacks.size(); ++i)
+			{
+				if (calibrateRuns > 0) {
+					if (calibrateRuns == N_AVG) {
+						offsetX = velocity.at(1);
+						offsetY = velocity.at(0);
+					}
+					calibrateRuns--;
+					offsetX = movingAvg(offsetX, velocity.at(1)); //1
+					offsetY = movingAvg(offsetY, velocity.at(0));
+					if (calibrateRuns == 1) {
+						std::cout << "offset X: " << offsetX << "\n";
+						std::cout << "offset Y: " << offsetY << "\n";
+						std::cout << "mouse calibrated!" << std::endl;
+					}
+				}
+
+				float rawNewX = velocity.at(1) - offsetX;
+				float rawNewY = velocity.at(0) - offsetY;
+
+				if (abs(rawNewY) < thresholdClickEnd) {
+					inclick = false;
+				}
+
+				if (!inclick)
+				{
+					if (abs(rawNewY - normValueY) > thresholdClick) {
+						if (rawNewY - normValueY < 0) { //at foot up
+							std::cout << "left click!" << "\n";
+							mouseLeftClick();
+							inclick = true;
+						}
+					}
+
+					if (abs(rawNewX - normValueX) > thresholdIgnore) {
+						rawNewX = limitAbs(rawNewX, thresholdIgnore);
+					}
+					if (abs(rawNewY - normValueY) > thresholdIgnore) {
+						rawNewY = limitAbs(rawNewY, thresholdIgnore);
+					}
+					normValueX = movingAvg(normValueX, rawNewX);
+					normValueY = movingAvg(normValueY, rawNewY);
+
+					if (abs(normValueX) > 0.01 || abs(normValueY) > 0.01) {
+						GetCursorPos(&cursorPos);
+						cursorY = cursorPos.y - sign(normValueY)*normValueY*normValueY*MOUSE_SPEED;
+						cursorX = cursorPos.x - sign(normValueX)*normValueX*normValueX*MOUSE_SPEED;
+						cursorY = limitValue(cursorY, 0, displayHeight);
+						cursorX = limitValue(cursorX, 0, displayWidth);
+						SetCursorPos(cursorX, cursorY);
+					}
+				}
+			}
+		}
+	}
 }
